@@ -77,6 +77,8 @@ def canonical_url(url):
 
 
 def classify(data):
+    if data.get("url", "").startswith("chrome-error://"):
+        return "error", "Browser network error page; check connectivity and proxy configuration"
     hint = (data.get("title", "") + "\n" + data.get("body_hint", "")).lower()
     if data.get("challenge_detected") or re.search(r"are you a robot|we.ve detected unusual activity|verify you are human|access denied|your access has been blocked|checking your browser|complete the captcha|enable javascript and cookies|正在进行安全验证|验证您不是自动程序", hint):
         return "blocked", "Verification or access-control page"
@@ -257,7 +259,7 @@ async def collect(args):
                             break
                         if not args.discover and status == "readable" and stable >= 2 and age >= 3:
                             break
-                        if status == "blocked" and age >= 4:
+                        if status in ("blocked", "error") and age >= 4:
                             break
                         # Give the extension time to restore delayed content.
                         if status == "paywall" and age >= 8 and stable >= 2:

@@ -14,5 +14,8 @@ ChromeProfile/
 chromium/
 chrome-win64/
 chrome-linux64/
+extensions/
+*.zip
+*.crx
 .DS_Store
 Thumbs.db

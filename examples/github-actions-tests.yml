@@ -22,11 +22,12 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: python -m unittest discover -s . -p "test_*.py" -v
       - run: python collect_news.py --help
+      - run: python check_news_browser.py --help
       - name: Check PowerShell syntax
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          foreach ($script in @('Start-NewsChrome.ps1', 'Collect-News.ps1')) {
+          foreach ($script in @('Start-NewsChrome.ps1', 'Collect-News.ps1', 'Install-NewsExtension.ps1')) {
             $syntaxErrors = $null
             $syntaxTokens = $null
             $null = [System.Management.Automation.Language.Parser]::ParseFile(

@@ -13,6 +13,11 @@ class ArticleAccessTests(unittest.TestCase):
     def test_verification_page_never_counts_as_article(self):
         self.assertEqual(classify(self.article(title="Bloomberg - Are you a robot?"))[0], "blocked")
 
+    def test_browser_network_error_is_not_an_incomplete_article(self):
+        data = {"url": "chrome-error://chromewebdata/", "title": "www.example.com",
+                "body_hint": "ERR_CONNECTION_TIMED_OUT", "blocks": []}
+        self.assertEqual(classify(data)[0], "error")
+
     def test_subscription_teaser_never_counts_as_article(self):
         self.assertEqual(classify(self.article(title="Subscribe to read"))[0], "paywall")
 

@@ -6,6 +6,8 @@
 
 它负责采集，不负责自动评判新闻价值、核验全文或生成 AI 摘要；后面这些交给你或 AI 助手。无需配置任何模型 API Key。
 
+**付费媒体正文依赖浏览器中的访问能力。** 原始工作流使用 **Bypass Paywalls Clean** 扩展；采集器本身不解锁付费墙。只安装Python依赖，可以扫公开标题、读取公开文章，但不能复现原始工作流的付费媒体阅读效果。下面包含扩展下载、首次配置、后台加载及检查步骤。
+
 ## 能做什么
 
 - 内置40个媒体入口，覆盖财经、国际关系、科技和科学。包含收费媒体与公开媒体；Politico的美国和欧洲入口属于同一品牌。
@@ -29,6 +31,37 @@ python -m pip install -r requirements.txt
 
 Linux/macOS激活环境用 `source .venv/bin/activate`。采集器连接外部浏览器，不需要运行 `playwright install`。
 
+## 安装和配置付费墙扩展
+
+使用 [Bypass Paywalls Clean for Chrome](https://gitflic.ru/project/magnolia1234/bypass-paywalls-chrome-clean)。本项目提供安装脚本，从该扩展上游README列出的地址下载ZIP，保留其原始许可证，解压到本机永久目录。它是独立的第三方项目，归属与许可证见[第三方依赖说明](THIRD_PARTY.md)。
+
+```powershell
+.\Install-NewsExtension.ps1
+```
+
+默认安装到`%LOCALAPPDATA%\NewsBriefing\Extensions\bypass-paywalls-chrome-clean`，启动脚本会自动加载这里的扩展。安装脚本显示实际版本和下载包SHA256；哈希用于记录这次下载，不是上游签名。再次运行会复用已安装版本，不覆盖扩展文件。原始工作流使用v4.4.2.6，在线安装取得上游当时提供的版本。
+
+下载受网络限制时，先从[上游下载页面](https://gitflic.ru/project/magnolia1234/bpc_uploads)保存ZIP，再运行：
+
+```powershell
+.\Install-NewsExtension.ps1 -ArchivePath 'C:\Downloads\bypass-paywalls-chrome-clean-master.zip'
+```
+
+首次配置需要一个可见窗口，在同一个独立浏览器profile里完成：
+
+```powershell
+.\Start-NewsChrome.ps1 -ChromePath 'C:\tools\chrome-win64\chrome.exe' -Setup
+```
+
+1. 在打开的`chrome://extensions/`页面开启“开发者模式”，确认Bypass Paywalls Clean存在且已启用。若浏览器没有接受命令行加载，点击“加载已解压的扩展程序”，选择上述永久目录。
+2. 检查扩展详情中的网站访问权限，以及扩展选项里的目标站点开关。某些版本或其他扩展若要求“允许用户脚本”，按其说明启用；这个选项并非所有版本都需要。
+3. 打开一篇目标媒体的付费文章，确认实际正文能够显示。扩展出现在列表里不代表每个站点都可读。
+4. 完全退出这个独立新闻浏览器，再按下节启动后台模式。profile中的扩展设置会保留，日常采集无需再次弹出配置窗口。
+
+`-Setup`专门用于首次配置，会显示窗口；日常命令不加它。若该CDP端口已有浏览器，配置模式会提示先退出或改用另一组profile和端口，不会悄悄把后台浏览器切换为可见窗口。
+
+更新扩展按[上游更新说明](https://gitflic.ru/project/magnolia1234/bypass-paywalls-chrome-clean)操作，保留安装目录，随后重启独立新闻浏览器。也可用`-Destination`安装到新的空目录，并在启动时传入对应的`-ExtensionPaths`；不要删除浏览器正在使用的目录。
+
 ## 启动浏览器
 
 ### Windows
@@ -41,6 +74,8 @@ Linux/macOS激活环境用 `source .venv/bin/activate`。采集器连接外部�
 
 默认使用独立的 `%LOCALAPPDATA%\NewsBriefing\ChromeProfile`，CDP端口为9230。浏览器默认以无窗口模式启动，不弹出窗口。已有该端口时直接复用，不改变现有浏览器的运行模式。
 
+未显式传入`-ExtensionPaths`时，脚本自动使用上一节的默认扩展目录；默认目录没有扩展时会提示。已经运行的浏览器只会被复用，不会因新的命令参数重新安装或加载扩展。
+
 可选参数：
 
 ```powershell
@@ -51,11 +86,13 @@ Linux/macOS激活环境用 `source .venv/bin/activate`。采集器连接外部�
   -ExtensionPaths @('C:\extensions\my-extension')
 ```
 
-`-ExtensionPaths`接收解压后含`manifest.json`的目录；是否允许命令行加载扩展取决于浏览器版本和发行渠道。普通Chrome可能限制此参数。第三方扩展、安装来源及许可证由使用者自行选择，本仓库不附带扩展。
+`-ExtensionPaths`接收解压后含`manifest.json`的目录，可用于已有的Bypass Paywalls Clean或其他扩展；是否允许命令行加载取决于浏览器版本和发行渠道，普通Chrome可能限制此参数。指定这个参数会替代默认扩展列表，需要多个扩展时一起传入。
 
 需要登录订阅或配置扩展时，先按浏览器和扩展说明在这个独立profile中完成一次配置，关闭它，再用后台脚本启动。某些扩展还要求开启开发者模式或允许用户脚本，不能仅凭参数出现就认定扩展已正常工作。
 
 `-ProxyServer 'http://127.0.0.1:8080'`可配置代理。无窗口模式下的扩展兼容性需要实际检查；需要正常浏览器环境时可加`-Headed`，脚本会隐藏窗口并将其移到屏幕外，但启动时仍可能短暂抢焦点。多个独立浏览器使用不同profile和端口。
+
+浏览器也需要能实际访问目标媒体。Python能下载扩展，不代表Chrome已经使用相同的网络代理；若本机设置了可供Chrome使用的`HTTPS_PROXY`，可显式传入`-ProxyServer $env:HTTPS_PROXY`，首次配置和日常启动保持一致。代理地址只保存在本机，不要写进公开仓库。
 
 ### 已有浏览器 / Linux / macOS
 
@@ -71,6 +108,18 @@ chromium --headless=new \
 macOS使用Chrome应用里的可执行文件，参数相同。使用扩展时，应按所用浏览器的支持情况选择正常或无窗口模式。
 
 CDP可以控制浏览器及其登录会话，应保持在本机回环地址。采集器直接连接CDP，无需另装Browser Gateway服务或扩展。
+
+### 检查扩展是否加载
+
+```powershell
+python check_news_browser.py
+# 非默认端口：
+python check_news_browser.py --endpoint http://127.0.0.1:9231
+```
+
+检查命令使用一个后台标签，输出浏览器版本、Bypass Paywalls Clean版本、启用状态、开发者模式和用户脚本权限信息，仅关闭自己创建的标签。未找到扩展、扩展被禁用或连接失败时返回非零退出码。开发者模式未开启不一定意味着已安装扩展无法运行，用户脚本权限也不是所有版本都必需。
+
+`ok: true`只确认扩展启用。最后仍需用`python collect_news.py --urls '实际文章URL' --refresh`试读，检查正文和结尾。仍出现`paywall`时，检查目标站点开关、权限和版本；`blocked`还可能是验证码或访问限制。扩展支持列表与本项目40个扫描入口是两回事，不能承诺所有文章都能取得全文。
 
 ## 日常用法
 
@@ -123,7 +172,7 @@ python collect_news.py --urls 'https://example.com/article/replace-this'
 .\Collect-News.ps1 -InputFile reports/selected.json -OutputFile reports/articles.json
 ```
 
-可以传`-ChromePath`让它在本机端口不可用时启动浏览器；其余启动选项与`Start-NewsChrome.ps1`一致。
+可以传`-ChromePath`让它在本机端口不可用时启动浏览器，也可传`-ProfilePath`、`-ExtensionPaths`、`-ProxyServer`和`-Headed`。首次可见配置请单独运行`Start-NewsChrome.ps1 -Setup`。
 
 需要快速初读时：
 
@@ -159,7 +208,7 @@ python collect_news.py --urls 'https://example.com/article/replace-this'
 | `paywall` | 仍有订阅提示 |
 | `blocked` | 验证页或访问拦截 |
 | `incomplete` | 没找到正文，或只取得短导语 |
-| `error` | 超时等执行错误 |
+| `error` | 超时等执行错误，或浏览器网络错误页 |
 
 可读正文缓存24小时，扫描和失败结果缓存15分钟。缓存文件名是清理后URL的SHA256，**不是正文哈希**。不同URL报道同一事件、跨日重复和转载，需要另外对照历史简报；本项目没有长期“已收录索引”。日期过滤也不是所有站点通用，主页上的旧推荐仍要检查。
 

@@ -6,7 +6,8 @@ param(
     [int]$Port = 9230,
     [string[]]$ExtensionPaths = @(),
     [string]$ProxyServer,
-    [switch]$Headed
+    [switch]$Headed,
+    [switch]$Setup
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,12 +19,22 @@ try {
 }
 if ($newsStatus) {
     Write-Output "Browser already available on port $Port ($($newsStatus.Browser))."
+    Write-Output 'Existing session reused; extension paths and startup options are not reapplied.'
+    if ($Setup) { throw 'Close the dedicated news browser first, or choose another port and profile for setup.' }
     return
 }
 
 $newsChrome = (Resolve-Path -LiteralPath $ChromePath).Path
 $newsProfile = [System.IO.Path]::GetFullPath($ProfilePath)
 New-Item -ItemType Directory -Path $newsProfile -Force | Out-Null
+if (-not $ExtensionPaths.Count) {
+    $newsDefaultExtension = Join-Path $env:LOCALAPPDATA 'NewsBriefing/Extensions/bypass-paywalls-chrome-clean'
+    if (Test-Path -LiteralPath (Join-Path $newsDefaultExtension 'manifest.json')) {
+        $ExtensionPaths = @($newsDefaultExtension)
+    } else {
+        Write-Warning 'Bypass Paywalls Clean is not installed in the default location. Run Install-NewsExtension.ps1 or provide -ExtensionPaths. Paid article bodies may remain unavailable.'
+    }
+}
 $newsExtensions = @($ExtensionPaths | ForEach-Object {
     $newsExtension = (Resolve-Path -LiteralPath $_).Path
     if (-not (Test-Path -LiteralPath (Join-Path $newsExtension 'manifest.json'))) {
@@ -39,18 +50,19 @@ $newsArguments = @(
     "--user-data-dir=`"$newsProfile`""
     '--no-first-run'
     '--no-default-browser-check'
-    '--window-position=-32000,-32000'
-    '--window-size=1200,800'
 )
+if ($Headed -and -not $Setup) {
+    $newsArguments += @('--window-position=-32000,-32000', '--window-size=1200,800')
+}
 if ($newsExtensions.Count) {
     $newsArguments += "--load-extension=`"$($newsExtensions -join ',')`""
 }
 if ($ProxyServer) { $newsArguments += "--proxy-server=`"$ProxyServer`"" }
-if (-not $Headed) { $newsArguments += '--headless=new' }
-$newsArguments += 'about:blank'
+if (-not $Headed -and -not $Setup) { $newsArguments += '--headless=new' }
+$newsArguments += $(if ($Setup) { 'chrome://extensions/' } else { 'about:blank' })
 
 # Preserve extension-compatible headed Chrome while keeping it offscreen.
-if ($Headed -and -not ('NewsBriefingWindow' -as [type])) {
+if ($Headed -and -not $Setup -and -not ('NewsBriefingWindow' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -84,9 +96,10 @@ public static class NewsBriefingWindow {
 '@
 }
 
-$newsBrowser = Start-Process -FilePath $newsChrome -ArgumentList $newsArguments -WindowStyle Hidden -PassThru
+$newsWindowStyle = if ($Setup) { 'Normal' } else { 'Hidden' }
+$newsBrowser = Start-Process -FilePath $newsChrome -ArgumentList $newsArguments -WindowStyle $newsWindowStyle -PassThru
 for ($newsAttempt = 0; $newsAttempt -lt 60; $newsAttempt++) {
-    if ($Headed) { [NewsBriefingWindow]::MoveOffscreen($newsBrowser.Id) }
+    if ($Headed -and -not $Setup) { [NewsBriefingWindow]::MoveOffscreen($newsBrowser.Id) }
     try {
         $newsStatus = Invoke-RestMethod $newsEndpoint -TimeoutSec 1
     } catch {

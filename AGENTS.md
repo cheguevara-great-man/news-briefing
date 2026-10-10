@@ -2,6 +2,7 @@
 
 - 先检查本机CDP和用户提供的浏览器配置，沿用现有会话。采集器创建后台标签；不得抢焦点、关闭用户标签或改变用户日常浏览器profile。
 - 首次运行按README配置Python和独立浏览器。Windows使用本项目Start-NewsChrome.ps1，路径和扩展由使用者提供，不猜测个人目录。
+- 复现付费媒体工作流时，先用Install-NewsExtension.ps1安装Bypass Paywalls Clean，再按README在同一独立profile完成首次配置。日常不得使用会显示窗口的-Setup。用check_news_browser.py检查扩展启用状态，随后试读实际文章；检查通过不能代替全文核验。Browser Gateway不是直接CDP采集的依赖。
 - 默认先运行`python collect_news.py --discover --output reports/discovery.json`，读取候选，再保存精选选单并用`--input`提取正文。选择依据是时效、实质变化、原创信息、解释价值及用户兴趣。
 - `--read-per-source`按网页顺序初读，不是价值评分。不得把候选数量当成阅读篇数。
 - 阅读text和paragraphs，检查正文边界与结尾。自动readable只是初筛；订阅页、推荐段落、只有导语和缺失后半段都不能算完整正文。

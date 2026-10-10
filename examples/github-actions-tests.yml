@@ -1,0 +1,35 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s . -p "test_*.py" -v
+      - run: python collect_news.py --help
+      - name: Check PowerShell syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($script in @('Start-NewsChrome.ps1', 'Collect-News.ps1')) {
+            $syntaxErrors = $null
+            $syntaxTokens = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path $PWD $script), [ref]$syntaxTokens, [ref]$syntaxErrors)
+            if ($syntaxErrors.Count) { throw ($syntaxErrors | Out-String) }
+          }

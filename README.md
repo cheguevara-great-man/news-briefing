@@ -201,6 +201,8 @@ python collect_news.py --urls 'https://example.com/article/replace-this'
 
 报告包含`collected_at`、耗时和`results`。文章结果包含URL、来源、标题、发表元数据、状态、原因，以及取得的`text`和`paragraphs`。`text`中也可能包含推荐、作者介绍等，需要确认正文边界；短简讯可能被保守地标成`incomplete`。
 
+**《经济学人》文章回退**：采集器先在原站尝试读取正文；若带日期的 `economist.com` 文章被标记为 `paywall`、`incomplete` 或 `blocked`，依次试读 `freedium-mirror.cfd` 和 `wallhop.io`。只有镜像返回足量段落且标题与原文吻合，才把原文章状态改为 `readable`，同时写入 `original_status` 和 `retrieved_via`。`source` 和原始 URL 保持为《经济学人》。这两个镜像不是永久保证可用的全文来源，`readable` 仍需人工确认文章结尾；`archive.today` 当前不在自动回退列表中。
+
 | 状态 | 含义 |
 | --- | --- |
 | `discovered` | 发现候选链接，尚未读文章 |

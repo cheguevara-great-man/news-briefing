@@ -1,7 +1,8 @@
 import unittest
 from datetime import date
 
-from collect_news import canonical_url, candidates, classify, publication_date
+from collect_news import (canonical_url, candidates, classify, economist_mirror_urls,
+                          mirror_matches_article, publication_date)
 
 
 class ArticleAccessTests(unittest.TestCase):
@@ -20,6 +21,29 @@ class ArticleAccessTests(unittest.TestCase):
 
     def test_subscription_teaser_never_counts_as_article(self):
         self.assertEqual(classify(self.article(title="Subscribe to read"))[0], "paywall")
+
+    def test_economist_explicit_server_paywall_takes_precedence_over_teaser(self):
+        data = self.article(publisher_paywall=True)
+        self.assertEqual(classify(data),
+                         ("paywall", "Publisher returned only a subscription-gated article teaser"))
+
+    def test_publisher_without_paywall_remains_readable(self):
+        self.assertEqual(classify(self.article(publisher_paywall=False))[0], "readable")
+
+    def test_economist_mirrors_only_for_dated_articles(self):
+        article = "https://www.economist.com/china/2026/10/12/example?utm_source=foo"
+        self.assertEqual(economist_mirror_urls(article), (
+            "https://freedium-mirror.cfd/https://www.economist.com/china/2026/10/12/example",
+            "https://wallhop.io/https://www.economist.com/china/2026/10/12/example"))
+        self.assertEqual(economist_mirror_urls("https://www.economist.com/"), ())
+        self.assertEqual(economist_mirror_urls("https://economist.com.attacker.test/2026/10/12/x"), ())
+
+    def test_mirror_requires_article_title_not_a_generic_readable_page(self):
+        article = {"title": "China is turning trash into treasure on a vast scale"}
+        mirror = {"status": "readable", "title": "China is turning trash into treasure on a vast scale - Freedium"}
+        self.assertTrue(mirror_matches_article(article, mirror))
+        self.assertFalse(mirror_matches_article(article, {"status": "readable", "title": "Popular news - Freedium"}))
+        self.assertFalse(mirror_matches_article(article, {**mirror, "status": "paywall"}))
 
     def test_paywall_with_recommended_article_paragraphs_is_not_readable(self):
         data = self.article(body_hint="A teaser. Continue reading this article with a Barron's subscription. What to Read Next")

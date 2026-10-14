@@ -61,8 +61,21 @@ EXTRACT = r"""() => {
     url: a.href, title: clean(a) || a.getAttribute('aria-label') || '',
     date: a.closest('article')?.querySelector('time')?.dateTime || ''
   })).filter(a => a.title.length > 18 && a.title.length < 500);
+  // The Economist can serve an article teaser with no visible subscription
+  // notice. Its server-rendered data explicitly says whether it is gated.
+  let publisher_paywall = false;
+  if (/(^|\.)economist\.com$/.test(location.hostname)) {
+    const nextData = document.querySelector('script#__NEXT_DATA__')?.textContent;
+    if (nextData) {
+      try {
+        const props = JSON.parse(nextData).props?.pageProps || {};
+        publisher_paywall = props.walled === true && props.auth?.isSubscriber === false;
+      } catch (_) { /* Not every page contains article data. */ }
+    }
+  }
   return {url:location.href, canonical, title:document.title, metadata, blocks, links,
     structured_data:[...document.querySelectorAll('script[type="application/ld+json"]')].map(s => s.textContent),
+    publisher_paywall,
     challenge_detected:[...document.scripts].some(s => s.src.includes('captcha-delivery.com')),
     dates:[...document.querySelectorAll('time')].map(t => ({date:t.dateTime,text:t.innerText})),
     body_hint:(document.body?.innerText || '').slice(0,6000)};
@@ -76,12 +89,37 @@ def canonical_url(url):
     return urlunsplit((parts.scheme, parts.netloc.lower(), parts.path, urlencode(query), ""))
 
 
+def economist_mirror_urls(url):
+    """Try known text mirrors only for dated Economist articles."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or parts.hostname not in ("economist.com", "www.economist.com"):
+        return ()
+    if not re.search(r"/20\d{2}/\d{2}/\d{2}/", parts.path):
+        return ()
+    article_url = canonical_url(url)
+    return (f"https://freedium-mirror.cfd/{article_url}",
+            f"https://wallhop.io/{article_url}")
+
+
+def mirror_matches_article(article, mirror):
+    """Avoid accepting a mirror's generic landing page as article content."""
+    if mirror.get("status") != "readable":
+        return False
+    original_title = article.get("title", "").strip().lower()
+    mirror_title = mirror.get("title", "").strip().lower()
+    if original_title and original_title != "economist.com":
+        return original_title in mirror_title
+    return False
+
+
 def classify(data):
     if data.get("url", "").startswith("chrome-error://"):
         return "error", "Browser network error page; check connectivity and proxy configuration"
     hint = (data.get("title", "") + "\n" + data.get("body_hint", "")).lower()
     if data.get("challenge_detected") or re.search(r"are you a robot|we.ve detected unusual activity|verify you are human|access denied|your access has been blocked|checking your browser|complete the captcha|enable javascript and cookies|正在进行安全验证|验证您不是自动程序", hint):
         return "blocked", "Verification or access-control page"
+    if data.get("publisher_paywall"):
+        return "paywall", "Publisher returned only a subscription-gated article teaser"
     article_hint = hint + "\n" + "\n".join(block.get("text", "") for block in data.get("blocks", [])).lower()
     if re.search(r"subscribe to read|subscribe to unlock|subscription required|continue reading this article with|subscribe to continue reading|you have reached your.*limit|you.ve reached your.*limit|you.ve accessed an article available only to subscribers|the rest is for subscribers only|to enjoy the rest of this story", article_hint):
         return "paywall", "Subscription page remains"
@@ -297,6 +335,26 @@ async def collect(args):
                 return result
 
         results = await asyncio.gather(*(one(job) for job in jobs))
+        if not args.discover:
+            async def try_mirrors(job, article):
+                if article.get("status") not in ("paywall", "incomplete", "blocked"):
+                    return article
+                for mirror_url in economist_mirror_urls(job["url"]):
+                    mirrored = await one({"url": mirror_url})
+                    if mirror_matches_article(article, mirrored):
+                        article.update(
+                            status="readable",
+                            reason="Article paragraphs retrieved from mirror; editorial review still required",
+                            original_status=article["status"],
+                            retrieved_via=mirror_url,
+                            text=mirrored["text"],
+                            paragraphs=mirrored["paragraphs"],
+                            body_hint=mirrored.get("body_hint", ""),
+                        )
+                        return article
+                return article
+
+            results = await asyncio.gather(*(try_mirrors(job, article) for job, article in zip(jobs, results)))
         await session.detach()
     report = {"collected_at": datetime.now(timezone.utc).isoformat(),
               "elapsed_seconds": round(time.monotonic()-started, 2), "results": results}
